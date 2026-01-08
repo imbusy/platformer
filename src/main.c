@@ -6,8 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define CANVAS_WIDTH 800
-#define CANVAS_HEIGHT 600
 #define SPRITE_SIZE 64.0f
 #define MOVE_SPEED 200.0f
 #define ROTATE_SPEED 3.0f
@@ -33,6 +31,10 @@ typedef struct {
 static Sprite sprite;
 static InputState input;
 static double last_time = 0.0;
+
+// Canvas dimensions (updated dynamically)
+static int canvas_width = 800;
+static int canvas_height = 600;
 
 // WebGPU objects
 static WGPUDevice device = NULL;
@@ -201,10 +203,10 @@ void update_sprite(float dt) {
     }
     
     // Keep sprite on screen with wrapping
-    if (sprite.x < -SPRITE_SIZE) sprite.x = CANVAS_WIDTH + SPRITE_SIZE;
-    if (sprite.x > CANVAS_WIDTH + SPRITE_SIZE) sprite.x = -SPRITE_SIZE;
-    if (sprite.y < -SPRITE_SIZE) sprite.y = CANVAS_HEIGHT + SPRITE_SIZE;
-    if (sprite.y > CANVAS_HEIGHT + SPRITE_SIZE) sprite.y = -SPRITE_SIZE;
+    if (sprite.x < -SPRITE_SIZE) sprite.x = canvas_width + SPRITE_SIZE;
+    if (sprite.x > canvas_width + SPRITE_SIZE) sprite.x = -SPRITE_SIZE;
+    if (sprite.y < -SPRITE_SIZE) sprite.y = canvas_height + SPRITE_SIZE;
+    if (sprite.y > canvas_height + SPRITE_SIZE) sprite.y = -SPRITE_SIZE;
 }
 
 // Render frame
@@ -227,7 +229,7 @@ void render_frame(void) {
     float proj[16], trans[16], rot[16], scale[16];
     float temp1[16], temp2[16];
     
-    mat4_ortho(proj, 0, CANVAS_WIDTH, 0, CANVAS_HEIGHT);
+    mat4_ortho(proj, 0, (float)canvas_width, 0, (float)canvas_height);
     mat4_translate(trans, sprite.x, sprite.y);
     mat4_rotate_z(rot, -sprite.angle);  // Negative because we rotate counter-clockwise
     mat4_scale(scale, SPRITE_SIZE, SPRITE_SIZE);
@@ -307,12 +309,56 @@ void render_frame(void) {
     wgpuTextureRelease(surface_texture.texture);
 }
 
+// Get current canvas size
+void get_canvas_size(int* width, int* height) {
+    double w, h;
+    emscripten_get_element_css_size("#canvas", &w, &h);
+    *width = (int)w;
+    *height = (int)h;
+}
+
+// Configure/reconfigure the WebGPU surface
+void configure_surface(void) {
+    if (!device || !surface) return;
+    
+    get_canvas_size(&canvas_width, &canvas_height);
+    
+    // Ensure minimum size
+    if (canvas_width < 1) canvas_width = 1;
+    if (canvas_height < 1) canvas_height = 1;
+    
+    WGPUSurfaceConfiguration config = {
+        .device = device,
+        .format = surface_format,
+        .usage = WGPUTextureUsage_RenderAttachment,
+        .alphaMode = WGPUCompositeAlphaMode_Opaque,
+        .width = (uint32_t)canvas_width,
+        .height = (uint32_t)canvas_height,
+        .presentMode = WGPUPresentMode_Fifo,
+    };
+    wgpuSurfaceConfigure(surface, &config);
+    
+    printf("Surface configured: %dx%d\n", canvas_width, canvas_height);
+}
+
+// Resize callback
+EM_BOOL on_canvas_resize(int event_type, const EmscriptenUiEvent* ui_event, void* user_data) {
+    (void)event_type;
+    (void)ui_event;
+    (void)user_data;
+    configure_surface();
+    return EM_TRUE;
+}
+
 // Initialize WebGPU
 void init_webgpu(WGPUDevice dev) {
     device = dev;
     queue = wgpuDeviceGetQueue(device);
     
     printf("WebGPU device initialized\n");
+    
+    // Get initial canvas size
+    get_canvas_size(&canvas_width, &canvas_height);
     
     // Create surface from canvas
     WGPUEmscriptenSurfaceSourceCanvasHTMLSelector canvas_source = {
@@ -326,17 +372,11 @@ void init_webgpu(WGPUDevice dev) {
     WGPUInstance instance = wgpuCreateInstance(NULL);
     surface = wgpuInstanceCreateSurface(instance, &surface_desc);
     
-    // Configure surface
-    WGPUSurfaceConfiguration config = {
-        .device = device,
-        .format = surface_format,
-        .usage = WGPUTextureUsage_RenderAttachment,
-        .alphaMode = WGPUCompositeAlphaMode_Opaque,
-        .width = CANVAS_WIDTH,
-        .height = CANVAS_HEIGHT,
-        .presentMode = WGPUPresentMode_Fifo,
-    };
-    wgpuSurfaceConfigure(surface, &config);
+    // Configure surface with actual canvas size
+    configure_surface();
+    
+    // Register resize callback
+    emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, NULL, EM_FALSE, on_canvas_resize);
     
     // Create shader module
     WGPUShaderSourceWGSL wgsl_source = {
@@ -460,9 +500,9 @@ void init_webgpu(WGPUDevice dev) {
     wgpuBindGroupLayoutRelease(bind_group_layout);
     wgpuPipelineLayoutRelease(pipeline_layout);
     
-    // Initialize sprite
-    sprite.x = CANVAS_WIDTH / 2.0f;
-    sprite.y = CANVAS_HEIGHT / 2.0f;
+    // Initialize sprite at center of canvas
+    sprite.x = canvas_width / 2.0f;
+    sprite.y = canvas_height / 2.0f;
     sprite.angle = 0.0f;
     
     // Initialize input
