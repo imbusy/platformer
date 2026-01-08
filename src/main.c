@@ -462,8 +462,22 @@ void init_webgpu(WGPUDevice dev) {
         .attributes = attrs,
     };
     
+    WGPUBlendState blend_state = {
+        .color = {
+            .srcFactor = WGPUBlendFactor_SrcAlpha,
+            .dstFactor = WGPUBlendFactor_OneMinusSrcAlpha,
+            .operation = WGPUBlendOperation_Add,
+        },
+        .alpha = {
+            .srcFactor = WGPUBlendFactor_One,
+            .dstFactor = WGPUBlendFactor_OneMinusSrcAlpha,
+            .operation = WGPUBlendOperation_Add,
+        },
+    };
+    
     WGPUColorTargetState color_target = {
         .format = surface_format,
+        .blend = &blend_state,
         .writeMask = WGPUColorWriteMask_All,
     };
     
