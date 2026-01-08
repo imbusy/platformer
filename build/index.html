@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebGPU Sprite Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #e0e0e0;
+        }
+        
+        h1 {
+            margin-bottom: 20px;
+            font-size: 2.5rem;
+            text-shadow: 0 0 20px rgba(100, 200, 255, 0.5);
+            color: #64ffda;
+        }
+        
+        #canvas-container {
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 
+                0 0 40px rgba(100, 255, 218, 0.2),
+                0 10px 40px rgba(0, 0, 0, 0.4);
+        }
+        
+        #canvas {
+            display: block;
+            background: #1a1a2e;
+        }
+        
+        .controls {
+            margin-top: 30px;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px 40px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .controls h2 {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            color: #64ffda;
+        }
+        
+        .key-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 60px);
+            grid-template-rows: repeat(2, 50px);
+            gap: 8px;
+            justify-content: center;
+        }
+        
+        .key {
+            background: linear-gradient(145deg, #2a2a4a, #1a1a3e);
+            border: 2px solid #3a3a5a;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: #a0a0c0;
+            transition: all 0.15s ease;
+        }
+        
+        .key.active {
+            background: linear-gradient(145deg, #64ffda, #4ecca3);
+            border-color: #64ffda;
+            color: #1a1a2e;
+            box-shadow: 0 0 20px rgba(100, 255, 218, 0.5);
+            transform: scale(0.95);
+        }
+        
+        .key-up { grid-column: 2; grid-row: 1; }
+        .key-left { grid-column: 1; grid-row: 2; }
+        .key-down { grid-column: 2; grid-row: 2; }
+        .key-right { grid-column: 3; grid-row: 2; }
+        
+        .key-labels {
+            margin-top: 15px;
+            font-size: 0.9rem;
+            color: #808090;
+            line-height: 1.6;
+        }
+        
+        #status {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: rgba(255, 100, 100, 0.2);
+            border-radius: 8px;
+            color: #ff6b6b;
+            display: none;
+        }
+        
+        #status.visible {
+            display: block;
+        }
+        
+        #status.success {
+            background: rgba(100, 255, 218, 0.2);
+            color: #64ffda;
+        }
+    </style>
+</head>
+<body>
+    <h1>WebGPU Sprite Demo</h1>
+    
+    <div id="canvas-container">
+        <canvas id="canvas" width="800" height="600"></canvas>
+    </div>
+    
+    <div class="controls">
+        <h2>Controls</h2>
+        <div class="key-grid">
+            <div class="key key-up" id="key-up">&uarr;</div>
+            <div class="key key-left" id="key-left">&larr;</div>
+            <div class="key key-down" id="key-down">&darr;</div>
+            <div class="key key-right" id="key-right">&rarr;</div>
+        </div>
+        <div class="key-labels">
+            <strong>&uarr; / &darr;</strong> Move forward / backward<br>
+            <strong>&larr; / &rarr;</strong> Rotate left / right
+        </div>
+    </div>
+    
+    <div id="status"></div>
+
+    <script>
+        // Check WebGPU support
+        if (!navigator.gpu) {
+            const status = document.getElementById('status');
+            status.textContent = 'WebGPU is not supported in this browser. Please use Chrome 113+ or Edge 113+.';
+            status.classList.add('visible');
+        }
+        
+        // Key visual feedback
+        const keyElements = {
+            38: document.getElementById('key-up'),
+            40: document.getElementById('key-down'),
+            37: document.getElementById('key-left'),
+            39: document.getElementById('key-right')
+        };
+    </script>
+    
+    <script src="game.js"></script>
+    
+    <script>
+        // Keyboard event handlers
+        document.addEventListener('keydown', (e) => {
+            if ([37, 38, 39, 40].includes(e.keyCode)) {
+                e.preventDefault();
+                
+                // Visual feedback
+                if (keyElements[e.keyCode]) {
+                    keyElements[e.keyCode].classList.add('active');
+                }
+                
+                // Send to WASM
+                if (Module && Module._on_key_down) {
+                    Module._on_key_down(e.keyCode);
+                }
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if ([37, 38, 39, 40].includes(e.keyCode)) {
+                e.preventDefault();
+                
+                // Visual feedback
+                if (keyElements[e.keyCode]) {
+                    keyElements[e.keyCode].classList.remove('active');
+                }
+                
+                // Send to WASM
+                if (Module && Module._on_key_up) {
+                    Module._on_key_up(e.keyCode);
+                }
+            }
+        });
+        
+        // Show success message when loaded
+        Module.onRuntimeInitialized = function() {
+            const status = document.getElementById('status');
+            status.textContent = 'WebGPU initialized successfully! Use arrow keys to control the sprite.';
+            status.classList.add('visible', 'success');
+            setTimeout(() => {
+                status.classList.remove('visible');
+            }, 3000);
+        };
+    </script>
+</body>
+</html>
