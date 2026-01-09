@@ -17,10 +17,53 @@ void mat4_ortho(float* m, float left, float right, float bottom, float top) {
     m[15] = 1.0f;
 }
 
+void mat4_perspective(float* m, float width, float height, float camera_dist, float far) {
+    // Perspective projection for screen-space coordinates
+    // Camera at (width/2, height/2, camera_dist), looking toward -z
+    // At z=0, objects appear at same size as orthographic
+    // At z<0 (negative), objects appear smaller (farther from camera)
+    //
+    // The projection works as follows:
+    // - x_clip = (2*d/w)*x - d
+    // - y_clip = (2*d/h)*y - d  
+    // - z_clip maps depth to [0,1] for depth buffer
+    // - w_clip = d - z (perspective divide factor)
+    //
+    // After divide by w: x_ndc = x_clip/w_clip, etc.
+    // At z=0: w=d, so x_ndc = ((2d/w)*x - d)/d = 2x/w - 1 (matches ortho)
+    
+    memset(m, 0, 16 * sizeof(float));
+    
+    float d = camera_dist;
+    float f = far;
+    
+    // Column 0 (x coefficients)
+    m[0] = 2.0f * d / width;    // x_clip += (2d/w) * x
+    
+    // Column 1 (y coefficients)
+    m[5] = 2.0f * d / height;   // y_clip += (2d/h) * y
+    
+    // Column 2 (z coefficients)
+    m[10] = -(d + f) / f;       // z_clip += -(d+f)/f * z, maps z to [0,1] after divide
+    m[11] = -1.0f;              // w_clip += -z
+    
+    // Column 3 (constant terms)
+    m[12] = -d;                 // x_clip += -d (center x)
+    m[13] = -d;                 // y_clip += -d (center y)
+    m[15] = d;                  // w_clip += d
+}
+
 void mat4_translate(float* m, float x, float y) {
     mat4_identity(m);
     m[12] = x;
     m[13] = y;
+}
+
+void mat4_translate_3d(float* m, float x, float y, float z) {
+    mat4_identity(m);
+    m[12] = x;
+    m[13] = y;
+    m[14] = z;
 }
 
 void mat4_rotate_z(float* m, float angle) {

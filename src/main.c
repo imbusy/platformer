@@ -8,30 +8,9 @@
 
 #include "text.h"
 #include "math.h"
-
-#define SPRITE_SIZE 64.0f
-#define MOVE_SPEED 200.0f
-#define ROTATE_SPEED 3.0f
-
-// Sprite state
-typedef struct {
-    float x;
-    float y;
-    float angle;  // in radians
-    float speed;
-} Sprite;
-
-// Input state
-typedef struct {
-    int up;
-    int down;
-    int left;
-    int right;
-} InputState;
+#include "game.h"
 
 // Global state
-static Sprite sprite;
-static InputState input;
 static double last_time = 0.0;
 
 // Canvas dimensions (updated dynamically)
@@ -102,59 +81,6 @@ static int load_shaders(void) {
     return 0;
 }
 
-// Input handlers (called from JavaScript)
-EMSCRIPTEN_KEEPALIVE
-void on_key_down(int key_code) {
-    switch (key_code) {
-        case 38: input.up = 1; break;    // Up arrow
-        case 40: input.down = 1; break;  // Down arrow
-        case 37: input.left = 1; break;  // Left arrow
-        case 39: input.right = 1; break; // Right arrow
-    }
-}
-
-EMSCRIPTEN_KEEPALIVE
-void on_key_up(int key_code) {
-    switch (key_code) {
-        case 38: input.up = 0; break;
-        case 40: input.down = 0; break;
-        case 37: input.left = 0; break;
-        case 39: input.right = 0; break;
-    }
-}
-
-// Update sprite based on input
-void update_sprite(float dt) {
-    // Rotate left/right
-    if (input.left) {
-        sprite.angle -= ROTATE_SPEED * dt;
-    }
-    if (input.right) {
-        sprite.angle += ROTATE_SPEED * dt;
-    }
-    
-    // Keep angle in [0, 2*PI]
-    while (sprite.angle < 0) sprite.angle += 2 * PI;
-    while (sprite.angle >= 2 * PI) sprite.angle -= 2 * PI;
-    
-    // Move forward/backward based on angle
-    float move = 0.0f;
-    if (input.up) move += MOVE_SPEED * dt;
-    if (input.down) move -= MOVE_SPEED * dt;
-    
-    if (move != 0.0f) {
-        // Move in the direction the sprite is facing (angle 0 = up)
-        sprite.x += sinf(sprite.angle) * move;
-        sprite.y += cosf(sprite.angle) * move;
-    }
-    
-    // Keep sprite on screen with wrapping
-    if (sprite.x < -SPRITE_SIZE) sprite.x = canvas_width + SPRITE_SIZE;
-    if (sprite.x > canvas_width + SPRITE_SIZE) sprite.x = -SPRITE_SIZE;
-    if (sprite.y < -SPRITE_SIZE) sprite.y = canvas_height + SPRITE_SIZE;
-    if (sprite.y > canvas_height + SPRITE_SIZE) sprite.y = -SPRITE_SIZE;
-}
-
 // Render frame
 void render_frame(void) {
     if (!device) return;
@@ -165,19 +91,28 @@ void render_frame(void) {
     if (dt > 0.1f) dt = 0.1f;  // Cap delta time
     last_time = current_time;
     
-    // Update sprite
-    update_sprite(dt);
+    // Update game state
+    game_update(dt, canvas_width, canvas_height);
+    
+    // Get sprite for rendering
+    const Sprite* sprite = game_get_sprite();
     
     // Update uniforms
     Uniforms uniforms;
     
     // Build transformation matrix: projection * translation * rotation * scale
+    // Using perspective projection for 3D rendering
     float proj[16], trans[16], rot[16], scale[16];
     float temp1[16], temp2[16];
     
-    mat4_ortho(proj, 0, (float)canvas_width, 0, (float)canvas_height);
-    mat4_translate(trans, sprite.x, sprite.y);
-    mat4_rotate_z(rot, -sprite.angle);  // Negative because we rotate counter-clockwise
+    // Perspective projection: camera_dist controls FOV strength
+    // Objects at z=0 appear at same size as orthographic
+    // Objects with z<0 appear smaller (farther from camera)
+    const float camera_dist = 500.0f;
+    const float far_plane = 1000.0f;
+    mat4_perspective(proj, (float)canvas_width, (float)canvas_height, camera_dist, far_plane);
+    mat4_translate_3d(trans, sprite->x, sprite->y, sprite->z);
+    mat4_rotate_z(rot, -sprite->angle);  // Negative because we rotate counter-clockwise
     mat4_scale(scale, SPRITE_SIZE, SPRITE_SIZE);
     
     mat4_multiply(temp1, rot, scale);
@@ -238,16 +173,13 @@ void render_frame(void) {
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vertex_buffer, 0, 6 * sizeof(Vertex));
     wgpuRenderPassEncoderDraw(pass, 6, 1, 0, 0);
     
-    // Draw "Hello, World!" text above the sprite
-    if (text_is_ready()) {
-        const char* hello_text = "Hello, World!";
-        float text_scale = 0.5f;  // Scale down the font
-        float text_width = calculate_text_width(hello_text, text_scale);
-        float text_x = sprite.x - text_width / 2.0f;  // Center above sprite
-        float text_y = sprite.y + SPRITE_SIZE / 2.0f + 50.0f;  // Position above sprite
-        
-        render_text(pass, hello_text, text_x, text_y, text_scale, 1.0f, 1.0f, 1.0f);  // White text
-    }
+    // Render game objects (text, etc.)
+    RenderContext render_ctx = {
+        .pass = pass,
+        .canvas_width = canvas_width,
+        .canvas_height = canvas_height,
+    };
+    game_render(&render_ctx);
     
     wgpuRenderPassEncoderEnd(pass);
     
@@ -480,14 +412,6 @@ void init_webgpu(WGPUDevice dev) {
     wgpuBindGroupLayoutRelease(bind_group_layout);
     wgpuPipelineLayoutRelease(pipeline_layout);
     
-    // Initialize sprite at center of canvas
-    sprite.x = canvas_width / 2.0f;
-    sprite.y = canvas_height / 2.0f;
-    sprite.angle = 0.0f;
-    
-    // Initialize input
-    memset(&input, 0, sizeof(input));
-    
     // Initialize time
     last_time = emscripten_get_now() / 1000.0;
     
@@ -498,6 +422,9 @@ void init_webgpu(WGPUDevice dev) {
     text_set_canvas_size(canvas_width, canvas_height);
     text_load_font_file("data/fonts/mikado-medium-f00f2383.fnt");
     text_create_pipeline(text_shader_source);
+    
+    // Initialize game state
+    game_init(canvas_width, canvas_height);
     
     // Start render loop
     emscripten_set_main_loop(render_frame, 0, 0);
