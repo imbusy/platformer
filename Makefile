@@ -7,7 +7,7 @@ CFLAGS = -O2 --use-port=emdawnwebgpu -sWASM=1 -sALLOW_MEMORY_GROWTH=1 \
 	--preload-file data/shaders@data/shaders \
 	--preload-file data/fonts/mikado-medium-f00f2383.fnt@data/fonts/mikado-medium-f00f2383.fnt
 
-SRC = src/main.c src/text.c
+SRC = src/main.c src/text.c src/math.c
 OUT = build/game.js
 
 .PHONY: all clean serve

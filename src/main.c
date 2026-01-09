@@ -7,11 +7,11 @@
 #include <string.h>
 
 #include "text.h"
+#include "math.h"
 
 #define SPRITE_SIZE 64.0f
 #define MOVE_SPEED 200.0f
 #define ROTATE_SPEED 3.0f
-#define PI 3.14159265358979323846f
 
 // Sprite state
 typedef struct {
@@ -94,63 +94,12 @@ static char* load_file(const char* path) {
 // Load all shader files
 static int load_shaders(void) {
     sprite_shader_source = load_file("data/shaders/sprite.wgsl");
-    if (!sprite_shader_source) return 0;
+    if (!sprite_shader_source) return 1;
     
     text_shader_source = load_file("data/shaders/text.wgsl");
-    if (!text_shader_source) return 0;
+    if (!text_shader_source) return 2;
     
-    return 1;
-}
-
-// Matrix helper functions
-void mat4_identity(float* m) {
-    memset(m, 0, 16 * sizeof(float));
-    m[0] = m[5] = m[10] = m[15] = 1.0f;
-}
-
-void mat4_ortho(float* m, float left, float right, float bottom, float top) {
-    memset(m, 0, 16 * sizeof(float));
-    m[0] = 2.0f / (right - left);
-    m[5] = 2.0f / (top - bottom);
-    m[10] = -1.0f;
-    m[12] = -(right + left) / (right - left);
-    m[13] = -(top + bottom) / (top - bottom);
-    m[15] = 1.0f;
-}
-
-void mat4_translate(float* m, float x, float y) {
-    mat4_identity(m);
-    m[12] = x;
-    m[13] = y;
-}
-
-void mat4_rotate_z(float* m, float angle) {
-    mat4_identity(m);
-    float c = cosf(angle);
-    float s = sinf(angle);
-    m[0] = c;
-    m[1] = s;
-    m[4] = -s;
-    m[5] = c;
-}
-
-void mat4_scale(float* m, float sx, float sy) {
-    mat4_identity(m);
-    m[0] = sx;
-    m[5] = sy;
-}
-
-void mat4_multiply(float* result, const float* a, const float* b) {
-    float temp[16];
-    for (int i = 0; i < 4; i++) {
-        for (int j = 0; j < 4; j++) {
-            temp[i * 4 + j] = 0;
-            for (int k = 0; k < 4; k++) {
-                temp[i * 4 + j] += a[k * 4 + j] * b[i * 4 + k];
-            }
-        }
-    }
-    memcpy(result, temp, 16 * sizeof(float));
+    return 0;
 }
 
 // Input handlers (called from JavaScript)
@@ -369,7 +318,7 @@ void init_webgpu(WGPUDevice dev) {
     printf("WebGPU device initialized\n");
     
     // Load shaders from preloaded files
-    if (!load_shaders()) {
+    if (load_shaders()) {
         printf("Failed to load shaders!\n");
         return;
     }
