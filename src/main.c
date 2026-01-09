@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "text.h"
+
 #define SPRITE_SIZE 64.0f
 #define MOVE_SPEED 200.0f
 #define ROTATE_SPEED 3.0f
@@ -58,52 +60,47 @@ typedef struct {
     float color[4];       // RGBA color
 } Uniforms;
 
-// Shader source (WGSL)
-static const char* shader_source = 
-    "struct Uniforms {\n"
-    "    transform: mat4x4<f32>,\n"
-    "    color: vec4<f32>,\n"
-    "};\n"
-    "\n"
-    "@group(0) @binding(0) var<uniform> uniforms: Uniforms;\n"
-    "\n"
-    "struct VertexInput {\n"
-    "    @location(0) position: vec2<f32>,\n"
-    "    @location(1) uv: vec2<f32>,\n"
-    "};\n"
-    "\n"
-    "struct VertexOutput {\n"
-    "    @builtin(position) position: vec4<f32>,\n"
-    "    @location(0) uv: vec2<f32>,\n"
-    "};\n"
-    "\n"
-    "@vertex\n"
-    "fn vs_main(in: VertexInput) -> VertexOutput {\n"
-    "    var out: VertexOutput;\n"
-    "    out.position = uniforms.transform * vec4<f32>(in.position, 0.0, 1.0);\n"
-    "    out.uv = in.uv;\n"
-    "    return out;\n"
-    "}\n"
-    "\n"
-    "@fragment\n"
-    "fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {\n"
-    "    // Create a simple arrow/triangle sprite pattern\n"
-    "    let uv = in.uv - vec2<f32>(0.5, 0.5);\n"
-    "    \n"
-    "    // Arrow body (rectangle)\n"
-    "    let body = abs(uv.x) < 0.15 && uv.y > -0.3 && uv.y < 0.2;\n"
-    "    \n"
-    "    // Arrow head (triangle pointing up)\n"
-    "    let head_y = uv.y - 0.2;\n"
-    "    let head = head_y > 0.0 && head_y < 0.3 && abs(uv.x) < (0.3 - head_y);\n"
-    "    \n"
-    "    if (body || head) {\n"
-    "        return uniforms.color;\n"
-    "    }\n"
-    "    \n"
-    "    // Transparent background - return fully transparent\n"
-    "    return vec4<f32>(0.0, 0.0, 0.0, 0.0);\n"
-    "}\n";
+// Shader source buffers (loaded from files)
+static char* sprite_shader_source = NULL;
+static char* text_shader_source = NULL;
+
+// Load a file from the virtual filesystem (preloaded by Emscripten)
+static char* load_file(const char* path) {
+    FILE* f = fopen(path, "rb");
+    if (!f) {
+        printf("Failed to open file: %s\n", path);
+        return NULL;
+    }
+    
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    
+    char* buffer = (char*)malloc(size + 1);
+    if (!buffer) {
+        printf("Failed to allocate memory for file: %s\n", path);
+        fclose(f);
+        return NULL;
+    }
+    
+    size_t read = fread(buffer, 1, size, f);
+    buffer[read] = '\0';
+    fclose(f);
+    
+    printf("Loaded file: %s (%ld bytes)\n", path, size);
+    return buffer;
+}
+
+// Load all shader files
+static int load_shaders(void) {
+    sprite_shader_source = load_file("data/shaders/sprite.wgsl");
+    if (!sprite_shader_source) return 0;
+    
+    text_shader_source = load_file("data/shaders/text.wgsl");
+    if (!text_shader_source) return 0;
+    
+    return 1;
+}
 
 // Matrix helper functions
 void mat4_identity(float* m) {
@@ -292,6 +289,17 @@ void render_frame(void) {
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vertex_buffer, 0, 6 * sizeof(Vertex));
     wgpuRenderPassEncoderDraw(pass, 6, 1, 0, 0);
     
+    // Draw "Hello, World!" text above the sprite
+    if (text_is_ready()) {
+        const char* hello_text = "Hello, World!";
+        float text_scale = 0.5f;  // Scale down the font
+        float text_width = calculate_text_width(hello_text, text_scale);
+        float text_x = sprite.x - text_width / 2.0f;  // Center above sprite
+        float text_y = sprite.y + SPRITE_SIZE / 2.0f + 50.0f;  // Position above sprite
+        
+        render_text(pass, hello_text, text_x, text_y, text_scale, 1.0f, 1.0f, 1.0f);  // White text
+    }
+    
     wgpuRenderPassEncoderEnd(pass);
     
     // Submit commands
@@ -338,6 +346,9 @@ void configure_surface(void) {
     };
     wgpuSurfaceConfigure(surface, &config);
     
+    // Update text rendering canvas size
+    text_set_canvas_size(canvas_width, canvas_height);
+    
     printf("Surface configured: %dx%d\n", canvas_width, canvas_height);
 }
 
@@ -356,6 +367,12 @@ void init_webgpu(WGPUDevice dev) {
     queue = wgpuDeviceGetQueue(device);
     
     printf("WebGPU device initialized\n");
+    
+    // Load shaders from preloaded files
+    if (!load_shaders()) {
+        printf("Failed to load shaders!\n");
+        return;
+    }
     
     // Get initial canvas size
     get_canvas_size(&canvas_width, &canvas_height);
@@ -381,7 +398,7 @@ void init_webgpu(WGPUDevice dev) {
     // Create shader module
     WGPUShaderSourceWGSL wgsl_source = {
         .chain = {.sType = WGPUSType_ShaderSourceWGSL},
-        .code = {.data = shader_source, .length = strlen(shader_source)},
+        .code = {.data = sprite_shader_source, .length = strlen(sprite_shader_source)},
     };
     WGPUShaderModuleDescriptor shader_desc = {
         .nextInChain = (WGPUChainedStruct*)&wgsl_source,
@@ -526,6 +543,12 @@ void init_webgpu(WGPUDevice dev) {
     last_time = emscripten_get_now() / 1000.0;
     
     printf("WebGPU initialization complete\n");
+    
+    // Initialize text rendering system
+    text_init(device, queue, surface_format);
+    text_set_canvas_size(canvas_width, canvas_height);
+    text_load_font_file("data/fonts/mikado-medium-f00f2383.fnt");
+    text_create_pipeline(text_shader_source);
     
     // Start render loop
     emscripten_set_main_loop(render_frame, 0, 0);
