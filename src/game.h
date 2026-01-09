@@ -4,8 +4,9 @@
 #include <webgpu/webgpu.h>
 
 // Game constants
-#define SPRITE_SIZE 64.0f
-#define MOVE_SPEED 200.0f
+#define SPRITE_SIZE 4.0f
+#define PIXELS_PER_UNIT 16.0f  // 4 units * 16 = 64 pixels (same visual size as before)
+#define MOVE_SPEED 12.5f       // In world units per second (was 200 pixels/s)
 #define ROTATE_SPEED 3.0f
 
 // Sprite state

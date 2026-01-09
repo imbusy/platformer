@@ -108,9 +108,12 @@ void render_frame(void) {
     // Perspective projection: camera_dist controls FOV strength
     // Objects at z=0 appear at same size as orthographic
     // Objects with z<0 appear smaller (farther from camera)
-    const float camera_dist = 500.0f;
-    const float far_plane = 1000.0f;
-    mat4_perspective(proj, (float)canvas_width, (float)canvas_height, camera_dist, far_plane);
+    // Use world units (canvas pixels / PIXELS_PER_UNIT)
+    const float camera_dist = 500.0f / PIXELS_PER_UNIT;  // ~31.25 world units
+    const float far_plane = 1000.0f / PIXELS_PER_UNIT;   // ~62.5 world units
+    float world_width = (float)canvas_width / PIXELS_PER_UNIT;
+    float world_height = (float)canvas_height / PIXELS_PER_UNIT;
+    mat4_perspective(proj, world_width, world_height, camera_dist, far_plane);
     mat4_translate_3d(trans, sprite->x, sprite->y, sprite->z);
     mat4_rotate_z(rot, -sprite->angle);  // Negative because we rotate counter-clockwise
     mat4_scale(scale, SPRITE_SIZE, SPRITE_SIZE);

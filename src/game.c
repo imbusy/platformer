@@ -11,9 +11,11 @@ static Sprite sprite;
 static InputState input;
 
 void game_init(int canvas_width, int canvas_height) {
-    // Initialize sprite at center of canvas
-    sprite.x = canvas_width / 2.0f;
-    sprite.y = canvas_height / 2.0f;
+    // Initialize sprite at center of canvas (in world units)
+    float world_width = canvas_width / PIXELS_PER_UNIT;
+    float world_height = canvas_height / PIXELS_PER_UNIT;
+    sprite.x = world_width / 2.0f;
+    sprite.y = world_height / 2.0f;
     sprite.z = 0.0f;  // At camera plane (z=0), negative moves away from camera
     sprite.angle = 0.0f;
     sprite.speed = 0.0f;
@@ -48,11 +50,13 @@ void game_update(float dt, int canvas_width, int canvas_height) {
         sprite.y += cosf(sprite.angle) * move;
     }
     
-    // Keep sprite on screen with wrapping
-    if (sprite.x < -SPRITE_SIZE) sprite.x = canvas_width + SPRITE_SIZE;
-    if (sprite.x > canvas_width + SPRITE_SIZE) sprite.x = -SPRITE_SIZE;
-    if (sprite.y < -SPRITE_SIZE) sprite.y = canvas_height + SPRITE_SIZE;
-    if (sprite.y > canvas_height + SPRITE_SIZE) sprite.y = -SPRITE_SIZE;
+    // Keep sprite on screen with wrapping (in world units)
+    float world_width = canvas_width / PIXELS_PER_UNIT;
+    float world_height = canvas_height / PIXELS_PER_UNIT;
+    if (sprite.x < -SPRITE_SIZE) sprite.x = world_width + SPRITE_SIZE;
+    if (sprite.x > world_width + SPRITE_SIZE) sprite.x = -SPRITE_SIZE;
+    if (sprite.y < -SPRITE_SIZE) sprite.y = world_height + SPRITE_SIZE;
+    if (sprite.y > world_height + SPRITE_SIZE) sprite.y = -SPRITE_SIZE;
 }
 
 const Sprite* game_get_sprite(void) {
@@ -65,8 +69,11 @@ void game_render(const RenderContext* ctx) {
         const char* hello_text = "Hello, World!";
         float text_scale = 0.5f;  // Scale down the font
         float text_width = calculate_text_width(hello_text, text_scale);
-        float text_x = sprite.x - text_width / 2.0f;  // Center above sprite
-        float text_y = sprite.y + SPRITE_SIZE / 2.0f + 50.0f;  // Position above sprite
+        // Convert sprite world position to pixel position for text rendering
+        float sprite_pixel_x = sprite.x * PIXELS_PER_UNIT;
+        float sprite_pixel_y = sprite.y * PIXELS_PER_UNIT;
+        float text_x = sprite_pixel_x - text_width / 2.0f;  // Center above sprite
+        float text_y = sprite_pixel_y + (SPRITE_SIZE * PIXELS_PER_UNIT) / 2.0f + 50.0f;  // Position above sprite
         
         render_text(ctx->pass, hello_text, text_x, text_y, text_scale, 1.0f, 1.0f, 1.0f);  // White text
     }
