@@ -8,21 +8,196 @@
         * {
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
         }
         html, body {
             width: 100%;
             height: 100%;
             overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
         #canvas {
             display: block;
             width: 100%;
             height: 100%;
         }
+        
+        /* Connection UI */
+        #connect-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        #connect-dialog {
+            background: #2a2a3e;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            color: #fff;
+        }
+        #connect-dialog h2 {
+            margin-bottom: 20px;
+            color: #7af;
+        }
+        #connect-dialog input {
+            display: block;
+            width: 250px;
+            padding: 10px 15px;
+            margin: 10px auto;
+            border: none;
+            border-radius: 6px;
+            background: #1a1a2e;
+            color: #fff;
+            font-size: 14px;
+        }
+        #connect-dialog input::placeholder {
+            color: #666;
+        }
+        #connect-dialog button {
+            margin-top: 15px;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            background: #4a9;
+            color: #fff;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        #connect-dialog button:hover {
+            background: #5ba;
+        }
+        #connect-dialog button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        #connect-status {
+            margin-top: 15px;
+            font-size: 14px;
+            color: #aaa;
+        }
+        #connect-status.error {
+            color: #f66;
+        }
+        #connect-status.success {
+            color: #6f6;
+        }
+        
+        /* Chat UI */
+        #chat-container {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            width: 350px;
+            z-index: 50;
+        }
+        #chat-messages {
+            max-height: 200px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 8px 8px 0 0;
+            padding: 10px;
+        }
+        .chat-message {
+            margin-bottom: 5px;
+            font-size: 13px;
+            color: #fff;
+        }
+        .chat-message .name {
+            color: #7af;
+            font-weight: bold;
+        }
+        .chat-message.system {
+            color: #888;
+            font-style: italic;
+        }
+        #chat-input-container {
+            display: flex;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 0 0 8px 8px;
+        }
+        #chat-input {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: transparent;
+            color: #fff;
+            font-size: 14px;
+        }
+        #chat-input::placeholder {
+            color: #666;
+        }
+        #chat-send {
+            padding: 10px 15px;
+            border: none;
+            background: #4a9;
+            color: #fff;
+            cursor: pointer;
+            border-radius: 0 0 8px 0;
+        }
+        
+        /* HUD */
+        #hud {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 15px;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 13px;
+            z-index: 50;
+        }
+        #hud .status {
+            color: #6f6;
+        }
+        #hud .status.disconnected {
+            color: #f66;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
     <canvas id="canvas"></canvas>
+    
+    <!-- Connection Dialog -->
+    <div id="connect-overlay">
+        <div id="connect-dialog">
+            <h2>Join Game</h2>
+            <input type="text" id="server-url" placeholder="Server URL" value="ws://localhost:9000">
+            <input type="text" id="auth-token" placeholder="Auth Token (e.g., player1)">
+            <button id="connect-btn">Connect</button>
+            <div id="connect-status"></div>
+        </div>
+    </div>
+    
+    <!-- Chat -->
+    <div id="chat-container" class="hidden">
+        <div id="chat-messages"></div>
+        <div id="chat-input-container">
+            <input type="text" id="chat-input" placeholder="Press Enter to chat..." maxlength="256">
+            <button id="chat-send">Send</button>
+        </div>
+    </div>
+    
+    <!-- HUD -->
+    <div id="hud" class="hidden">
+        <div>Player: <span id="hud-name">-</span></div>
+        <div>Status: <span id="hud-status" class="status disconnected">Disconnected</span></div>
+        <div>Players: <span id="hud-players">0</span></div>
+    </div>
+    
     <script>
         // Define Module before loading game.js
         var Module = {
@@ -37,6 +212,19 @@
     <script>
         const canvas = document.getElementById('canvas');
         
+        // Input state tracking
+        let inputState = {
+            up: false,
+            down: false,
+            left: false,
+            right: false,
+            jump: false,
+            action: false
+        };
+        let lastInputBits = 0;
+        let isConnected = false;
+        let gameFocused = false;
+        
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
@@ -44,24 +232,236 @@
         
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
+        
+        // Convert input state to bitmask
+        function getInputBits() {
+            let bits = 0;
+            if (inputState.up) bits |= 1;
+            if (inputState.down) bits |= 2;
+            if (inputState.left) bits |= 4;
+            if (inputState.right) bits |= 8;
+            if (inputState.jump) bits |= 16;
+            if (inputState.action) bits |= 32;
+            return bits;
+        }
+        
+        // Send input to server when it changes
+        function sendInputIfChanged() {
+            const bits = getInputBits();
+            if (bits !== lastInputBits && isConnected) {
+                lastInputBits = bits;
+                if (Module && Module._network_send_input) {
+                    Module._network_send_input(bits);
+                }
+            }
+        }
+        
+        // Key mappings
+        const keyMap = {
+            'ArrowUp': 'up', 'KeyW': 'up',
+            'ArrowDown': 'down', 'KeyS': 'down',
+            'ArrowLeft': 'left', 'KeyA': 'left',
+            'ArrowRight': 'right', 'KeyD': 'right',
+            'Space': 'jump',
+            'KeyE': 'action', 'ShiftLeft': 'action', 'ShiftRight': 'action'
+        };
 
         document.addEventListener('keydown', (e) => {
-            if ([37, 38, 39, 40].includes(e.keyCode)) {
+            // Don't process game input when chat is focused
+            if (!gameFocused && e.code !== 'Escape') return;
+            
+            const action = keyMap[e.code];
+            if (action) {
                 e.preventDefault();
-                if (Module && Module._on_key_down) {
-                    Module._on_key_down(e.keyCode);
+                if (!inputState[action]) {
+                    inputState[action] = true;
+                    sendInputIfChanged();
+                    
+                    // Also send to local game for immediate feedback
+                    if (Module && Module._on_key_down) {
+                        Module._on_key_down(e.keyCode);
+                    }
                 }
+            }
+            
+            // Enter to focus chat
+            if (e.code === 'Enter' && gameFocused && isConnected) {
+                e.preventDefault();
+                document.getElementById('chat-input').focus();
+            }
+            
+            // Escape to unfocus chat
+            if (e.code === 'Escape' && !gameFocused) {
+                document.getElementById('chat-input').blur();
             }
         });
         
         document.addEventListener('keyup', (e) => {
-            if ([37, 38, 39, 40].includes(e.keyCode)) {
+            // Don't process game input when chat is focused
+            if (!gameFocused && e.code !== 'Escape') return;
+
+            const action = keyMap[e.code];
+            if (action) {
                 e.preventDefault();
+                inputState[action] = false;
+                sendInputIfChanged();
+                
+                // Also send to local game
                 if (Module && Module._on_key_up) {
                     Module._on_key_up(e.keyCode);
                 }
             }
         });
+        
+        // Chat input handling
+        const chatInput = document.getElementById('chat-input');
+        chatInput.addEventListener('focus', () => {
+            gameFocused = false;
+        });
+        chatInput.addEventListener('blur', () => {
+            gameFocused = false;
+        });
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.code === 'Enter') {
+                e.preventDefault();
+                sendChat();
+            }
+        });
+        document.getElementById('chat-send').addEventListener('click', sendChat);
+        
+        function sendChat() {
+            const msg = chatInput.value.trim();
+            if (msg && Module && Module._network_send_chat) {
+                const ptr = allocateUTF8(msg);
+                Module._network_send_chat(ptr);
+                _free(ptr);
+                chatInput.value = '';
+            }
+            chatInput.blur();
+        }
+        
+        function addChatMessage(name, message, isSystem = false) {
+            const container = document.getElementById('chat-messages');
+            const div = document.createElement('div');
+            div.className = 'chat-message' + (isSystem ? ' system' : '');
+            if (isSystem) {
+                div.textContent = message;
+            } else {
+                div.innerHTML = '<span class="name">' + escapeHtml(name) + ':</span> ' + escapeHtml(message);
+            }
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+            
+            // Limit messages
+            while (container.children.length > 50) {
+                container.removeChild(container.firstChild);
+            }
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Connection handling
+        const connectBtn = document.getElementById('connect-btn');
+        const connectStatus = document.getElementById('connect-status');
+        const connectOverlay = document.getElementById('connect-overlay');
+        
+        connectBtn.addEventListener('click', () => {
+            const url = document.getElementById('server-url').value.trim();
+            const token = document.getElementById('auth-token').value.trim();
+            
+            if (!url || !token) {
+                connectStatus.textContent = 'Please enter server URL and token';
+                connectStatus.className = 'error';
+                return;
+            }
+            
+            connectBtn.disabled = true;
+            connectStatus.textContent = 'Connecting...';
+            connectStatus.className = '';
+            
+            // Initialize network and connect
+            if (Module && Module._network_init) {
+                Module._network_init();
+            }
+            
+            // Store token for auth callback
+            window.pendingAuthToken = token;
+            
+            // Connect via C network module
+            if (Module && Module._network_connect) {
+                const urlPtr = allocateUTF8(url);
+                Module._network_connect(urlPtr);
+                _free(urlPtr);
+            }
+        });
+        
+        // Expose callbacks for C to call
+        window.onNetworkConnected = function() {
+            connectStatus.textContent = 'Connected! Authenticating...';
+            
+            // Send auth
+            if (window.pendingAuthToken && Module._network_authenticate) {
+                const tokenPtr = allocateUTF8(window.pendingAuthToken);
+                Module._network_authenticate(tokenPtr);
+                _free(tokenPtr);
+            }
+        };
+        
+        window.onNetworkAuthenticated = function(name) {
+            connectStatus.textContent = 'Authenticated as ' + name;
+            connectStatus.className = 'success';
+
+            setTimeout(() => {
+                connectOverlay.classList.add('hidden');
+                document.getElementById('chat-container').classList.remove('hidden');
+                document.getElementById('hud').classList.remove('hidden');
+                document.getElementById('hud-name').textContent = name;
+                document.getElementById('hud-status').textContent = 'Connected';
+                document.getElementById('hud-status').className = 'status';
+                isConnected = true;
+            }, 500);
+        };
+        
+        window.onNetworkDisconnected = function() {
+            isConnected = false;
+            connectBtn.disabled = false;
+            connectStatus.textContent = 'Disconnected';
+            connectStatus.className = 'error';
+            connectOverlay.classList.remove('hidden');
+            document.getElementById('chat-container').classList.add('hidden');
+            document.getElementById('hud').classList.add('hidden');
+            document.getElementById('hud-status').textContent = 'Disconnected';
+            document.getElementById('hud-status').className = 'status disconnected';
+        };
+        
+        window.onNetworkError = function() {
+            connectBtn.disabled = false;
+            connectStatus.textContent = 'Connection failed';
+            connectStatus.className = 'error';
+        };
+        
+        window.onChatMessage = function(playerId, name, message) {
+            addChatMessage(name, message);
+        };
+
+        window.onPlayerJoin = function(playerId, name) {
+            addChatMessage('', name + ' joined the game', true);
+            updatePlayerCount();
+        };
+
+        window.onPlayerLeave = function(playerId) {
+            addChatMessage('', 'Player ' + playerId + ' left the game', true);
+            updatePlayerCount();
+        };
+        
+        function updatePlayerCount() {
+            // This would be called from the game state update
+            // For now, we'll update it based on remote player count
+        }
 
         // Load font texture (font data is preloaded via Emscripten --preload-file)
         async function loadFont() {
@@ -100,6 +500,14 @@
             } catch (error) {
                 console.error('Error loading font:', error);
             }
+        }
+        
+        // Helper to allocate UTF8 string
+        function allocateUTF8(str) {
+            const len = lengthBytesUTF8(str) + 1;
+            const ptr = _malloc(len);
+            stringToUTF8(str, ptr, len);
+            return ptr;
         }
     </script>
 </body>
