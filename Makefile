@@ -3,7 +3,7 @@
 CC = emcc
 CFLAGS = -O2 --use-port=emdawnwebgpu -sWASM=1 -sALLOW_MEMORY_GROWTH=1 \
 	-I./shared \
-	-sEXPORTED_FUNCTIONS='["_main","_malloc","_free","_on_key_down","_on_key_up","_upload_font_texture","_load_font_data","_network_init","_network_connect","_network_disconnect","_network_authenticate","_network_send_input","_network_send_chat","_network_on_open","_network_on_close","_network_on_error","_network_on_message"]' \
+	-sEXPORTED_FUNCTIONS='["_main","_malloc","_free","_upload_font_texture","_load_font_data","_network_init","_network_connect","_network_disconnect","_network_authenticate","_network_send_input","_network_send_chat","_network_on_open","_network_on_close","_network_on_error","_network_on_message"]' \
 	-sEXPORTED_RUNTIME_METHODS='["ccall","cwrap","setValue","writeArrayToMemory","UTF8ToString","stringToUTF8","lengthBytesUTF8"]' \
 	--preload-file data/shaders@data/shaders \
 	--preload-file data/fonts/mikado-medium-f00f2383.fnt@data/fonts/mikado-medium-f00f2383.fnt

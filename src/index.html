@@ -276,11 +276,6 @@
                 if (!inputState[action]) {
                     inputState[action] = true;
                     sendInputIfChanged();
-                    
-                    // Also send to local game for immediate feedback
-                    if (Module && Module._on_key_down) {
-                        Module._on_key_down(e.keyCode);
-                    }
                 }
             }
             
@@ -305,11 +300,6 @@
                 e.preventDefault();
                 inputState[action] = false;
                 sendInputIfChanged();
-                
-                // Also send to local game
-                if (Module && Module._on_key_up) {
-                    Module._on_key_up(e.keyCode);
-                }
             }
         });
         

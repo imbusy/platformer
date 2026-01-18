@@ -6,8 +6,6 @@
 // Game constants
 #define SPRITE_SIZE 4.0f
 #define PIXELS_PER_UNIT 16.0f  // 4 units * 16 = 64 pixels (same visual size as before)
-#define MOVE_SPEED 12.5f       // In world units per second (was 200 pixels/s)
-#define ROTATE_SPEED 3.0f
 
 // Sprite state
 typedef struct {
@@ -17,14 +15,6 @@ typedef struct {
     float angle;  // in radians
     float speed;
 } Sprite;
-
-// Input state
-typedef struct {
-    int up;
-    int down;
-    int left;
-    int right;
-} InputState;
 
 // Render context passed to game for rendering operations
 typedef struct {
@@ -44,9 +34,5 @@ void game_render(const RenderContext* ctx);
 
 // Get current sprite state (for rendering)
 const Sprite* game_get_sprite(void);
-
-// Input handlers (called from JavaScript)
-void on_key_down(int key_code);
-void on_key_up(int key_code);
 
 #endif // GAME_H
